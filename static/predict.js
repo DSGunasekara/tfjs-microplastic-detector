@@ -63,7 +63,7 @@ async function loadImage(onProgress) {
 
 const ANCHORS = [0.573, 0.677, 1.87, 2.06, 3.34, 5.47, 7.88, 3.53, 9.77, 9.17];
 const NEW_OD_OUTPUT_TENSORS = ['detected_boxes', 'detected_scores', 'detected_classes'];
-async function predictLogos(inputs) {
+async function predictPlastic(inputs) {
 	console.log( "Running predictions..." );
 	await $('.progress-bar').html("Running predictions").promise();
 	const outputs = await model.executeAsync(inputs, is_new_od_model ? NEW_OD_OUTPUT_TENSORS : null);
@@ -126,15 +126,27 @@ function removeHighlights() {
 	}
 	children = [];
 }
-async function highlightResults(predictions) {
+var data = [];
+async function highlightResults(predictions, count) {
 	console.log( "Highlighting results..." );
 	await $('.progress-bar').html("Highlighting results").promise();
 
 	removeHighlights();
+	var plasticQty = 0;
+	var threadQty = 0;
+
+	
 	
 	for (let n = 0; n < predictions[0].length; n++) {
 		// Check scores
 		if (predictions[1][n] > 0.66) {
+			if(predictions[2][n] === 0){
+				++plasticQty;
+				console.log('Plastic');
+			}else{
+				++threadQty;
+				console.log('Thread');
+			}
 			const p = document.createElement('p');
 			p.innerText = TARGET_CLASSES[predictions[2][n]]  + ': ' 
 				+ Math.round(parseFloat(predictions[1][n]) * 100) 
@@ -160,8 +172,23 @@ async function highlightResults(predictions) {
 			children.push(p);
 		}
 	}
+	let graph1 = {
+		depth: count,
+		plasticType: "plastic",
+		qty: plasticQty
+	}
+	let graph2 = {
+		depth: count,
+		plasticType: "thread",
+		qty: threadQty
+	}
+	// console.log(graph1);
+	// console.log(graph2);
+	data.push(graph1);
+	data.push(graph2);
+	console.log(data);
 }
-
+var count = 0;
 $("#predict-button").click(async function () {
 	if (!modelLoaded) { alert("The model must be loaded first"); return; }
 	if (!imageLoaded) { alert("Please select an image first"); return; }
@@ -169,8 +196,27 @@ $("#predict-button").click(async function () {
 	$('.progress-bar').show();
 
 	const image = await loadImage();
-	const predictions = await predictLogos(image);
-	await highlightResults(predictions);
+	const predictions = await predictPlastic(image);
+	// data = [];
+	// console.log(++count);
+	await highlightResults(predictions, ++count);
 
 	$('.progress-bar').hide();
 });
+
+$("#save-button").click(async function(){
+	if (!modelLoaded) { alert("The model must be loaded first"); return; }
+	if (count == 0) { alert("Please Analyze the images first"); return; }
+	var date = new Date();
+	let graph = {
+		name: `New ${date}`,
+		date: date,
+		location: "Update the location",
+		data
+	}
+	// console.log(graph);
+	const res = await axios.post("https://embedded-b.herokuapp.com/api/graph", {...graph});
+	if(res.status === 200) { alert("Data Uploaded to the server"); return; }
+	if(res.status !== 200) { alert("An Error Occured"); return; }
+	console.log(res);
+})
